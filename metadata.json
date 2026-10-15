@@ -1,0 +1,6 @@
+{
+  "name": "Insighte Policy AI & RAG Assistant",
+  "description": "Intelligent RAG policy assistant and admin management system for Insighte shadow teachers, therapists, consultants, and employees.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
