@@ -1,6 +1,6 @@
 import { ChatMessage, PolicyRole } from '../types';
 
-export function exportChatToCSV(messages: ChatMessage[], currentRole: PolicyRole, employeeId: string) {
+export function exportChatToCSV(messages: ChatMessage[], currentRole: PolicyRole | 'admin', employeeId: string) {
   const headers = ['Timestamp', 'Role', 'Sender', 'Message', 'Citations'];
   
   const rows = messages.map(msg => {
@@ -54,7 +54,7 @@ export function shareToWhatsApp(messages: ChatMessage[]) {
   window.open(url, '_blank');
 }
 
-export function shareViaEmail(messages: ChatMessage[], role: PolicyRole) {
+export function shareViaEmail(messages: ChatMessage[], role: PolicyRole | 'admin') {
   const subject = encodeURIComponent(`Insighte Policy Inquiry Record - ${role.toUpperCase()}`);
   const body = encodeURIComponent(generateShareText(messages));
   const mailtoUrl = `mailto:?subject=${subject}&body=${body}`;

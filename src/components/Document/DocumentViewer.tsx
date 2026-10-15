@@ -15,10 +15,10 @@ import { PolicyCategory, PolicyRole } from '../../types';
 
 interface DocumentViewerProps {
   policies: PolicyCategory[];
-  currentRole: PolicyRole;
+  currentRole: PolicyRole | 'admin';
   isEmployeeVerified: boolean;
   onOpenEmployeeModal: (msg?: string) => void;
-  onRoleChange: (role: PolicyRole) => void;
+  onRoleChange: (role: PolicyRole | 'admin') => void;
 }
 
 export const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -28,11 +28,11 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onOpenEmployeeModal,
   onRoleChange
 }) => {
-  const [selectedBook, setSelectedBook] = useState<PolicyRole>(currentRole);
+  const [selectedBook, setSelectedBook] = useState<PolicyRole>(currentRole === 'admin' ? 'employee' : currentRole);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Lock employee policy if not verified
-  const isEmployeeLocked = selectedBook === 'employee' && !isEmployeeVerified;
+  // Lock employee policy if not verified (admin has full access)
+  const isEmployeeLocked = selectedBook === 'employee' && !isEmployeeVerified && currentRole !== 'admin';
 
   const bookPolicies = useMemo(() => {
     return policies

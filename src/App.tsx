@@ -6,7 +6,8 @@ import { DocumentViewer } from './components/Document/DocumentViewer';
 import { EmployeeIdModal } from './components/Modals/EmployeeIdModal';
 import { AdminLoginModal } from './components/Modals/AdminLoginModal';
 import { PolicyPagePreviewModal } from './components/Modals/PolicyPagePreviewModal';
-import { LogoConfig, PolicyCategory, PolicyCitation, PolicyRole } from './types';
+import { RoleDashboard } from './components/Dashboard/RoleDashboard';
+import { LogoConfig, PolicyCategory, PolicyCitation, PolicyRole, UserRole } from './types';
 import { INITIAL_CONSULTANT_POLICIES, INITIAL_EMPLOYEE_POLICIES } from './data/defaultPolicies';
 
 const DEFAULT_LOGO_CONFIG: LogoConfig = {
@@ -27,13 +28,19 @@ export default function App() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  // Apply dark mode class to documentElement
+  // Apply dark mode class to documentElement — this triggers all dark: Tailwind classes
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
+      const root = document.getElementById('root');
+      if (root) root.classList.add('dark');
       localStorage.setItem('insighte_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
+      const root = document.getElementById('root');
+      if (root) root.classList.remove('dark');
       localStorage.setItem('insighte_theme', 'light');
     }
   }, [isDarkMode]);
@@ -77,22 +84,20 @@ export default function App() {
     }).catch(err => console.warn('Could not sync with backend:', err));
   };
 
-  // Role state: Opens BY DEFAULT in Consultant side
-  const [currentRole, setCurrentRole] = useState<PolicyRole>('consultant');
-  const [employeeId, setEmployeeId] = useState<string>(() => {
-    return localStorage.getItem('insighte_employee_id') || '';
-  });
-  const [isEmployeeVerified, setIsEmployeeVerified] = useState<boolean>(() => {
-    return Boolean(localStorage.getItem('insighte_employee_verified') === 'true');
-  });
+  // Authenticated Role & View state:
+  // Starts on 'dashboard' (small dashboard to choose consultant, employee, or admin)
+  const [activeView, setActiveView] = useState<'dashboard' | 'chat' | 'admin' | 'document'>('dashboard');
+  const [userAuthRole, setUserAuthRole] = useState<UserRole | null>(null);
 
-  // Navigation View
-  const [activeView, setActiveView] = useState<'chat' | 'admin' | 'document'>('chat');
+  // Current Role in the chat / active bot: 'consultant' | 'employee' | 'admin'
+  const [currentRole, setCurrentRole] = useState<PolicyRole | 'admin'>('consultant');
+  
+  // Employee auth state
+  const [employeeId, setEmployeeId] = useState<string>('');
+  const [isEmployeeVerified, setIsEmployeeVerified] = useState<boolean>(false);
 
   // Admin auth state
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
-    return sessionStorage.getItem('insighte_admin_auth') === 'true';
-  });
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
 
   // Modals state
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
@@ -101,45 +106,86 @@ export default function App() {
   const [previewCitationCategory, setPreviewCitationCategory] = useState<PolicyCategory | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
-  // Handle Role change
-  const handleRoleChange = (role: PolicyRole) => {
-    if (role === 'employee' && !isEmployeeVerified) {
-      setEmployeeModalMessage('Consultants cannot access Employee Policy. Please verify your Employee ID.');
+  // 1. Consultant Entry: No login ID needed
+  const handleSelectConsultant = () => {
+    setUserAuthRole('consultant');
+    setCurrentRole('consultant');
+    setActiveView('chat');
+  };
+
+  // 2. Employee Login: ID and Password verified
+  const handleLoginEmployee = (verifiedId: string) => {
+    setUserAuthRole('employee');
+    setCurrentRole('employee');
+    setEmployeeId(verifiedId);
+    setIsEmployeeVerified(true);
+    setActiveView('chat');
+  };
+
+  // 3. Admin Login: Credentials verified
+  const handleLoginAdmin = () => {
+    setUserAuthRole('admin');
+    setCurrentRole('admin');
+    setIsAdminLoggedIn(true);
+    setActiveView('chat');
+  };
+
+  // Handle Role change in the top right
+  const handleRoleChange = (role: PolicyRole | 'admin') => {
+    if (userAuthRole === 'consultant' && role !== 'consultant') {
+      // Consultant is strictly blocked from Employee and Admin
+      return;
+    }
+
+    if (role === 'employee' && !isEmployeeVerified && userAuthRole !== 'admin') {
+      setEmployeeModalMessage('Consultants cannot access Employee Policy. Please verify your Employee ID and password.');
       setIsEmployeeModalOpen(true);
       return;
     }
+
     setCurrentRole(role);
   };
 
-  // Handle Employee Verification success
+  // Handle Employee Verification success from modal
   const handleEmployeeVerified = (verifiedId: string) => {
     setEmployeeId(verifiedId);
     setIsEmployeeVerified(true);
+    setUserAuthRole('employee');
     setCurrentRole('employee');
-    localStorage.setItem('insighte_employee_id', verifiedId);
-    localStorage.setItem('insighte_employee_verified', 'true');
   };
 
   // Handle Admin Button click
   const handleOpenAdmin = () => {
-    if (isAdminLoggedIn) {
+    if (userAuthRole === 'consultant') {
+      return; // blocked for consultant
+    }
+    if (isAdminLoggedIn || userAuthRole === 'admin') {
       setActiveView('admin');
     } else {
       setIsAdminModalOpen(true);
     }
   };
 
-  // Handle Admin Login success
+  // Handle Admin Login success from modal
   const handleAdminLoginSuccess = () => {
     setIsAdminLoggedIn(true);
-    sessionStorage.setItem('insighte_admin_auth', 'true');
+    setUserAuthRole('admin');
+    setCurrentRole('admin');
     setActiveView('admin');
   };
 
-  const handleAdminLogout = () => {
+  // Sign out handler:
+  // "everytime employee or admin signout ,to access again they should sign in"
+  const handleSignOut = () => {
     setIsAdminLoggedIn(false);
+    setIsEmployeeVerified(false);
+    setEmployeeId('');
+    setUserAuthRole(null);
+    setCurrentRole('consultant');
     sessionStorage.removeItem('insighte_admin_auth');
-    setActiveView('chat');
+    localStorage.removeItem('insighte_employee_verified');
+    localStorage.removeItem('insighte_employee_id');
+    setActiveView('dashboard');
   };
 
   // Handle Citation click in chat: opens Policy Page Preview Modal
@@ -151,6 +197,20 @@ export default function App() {
     }
   };
 
+  // If on Dashboard, render the small portal selection dashboard
+  if (activeView === 'dashboard') {
+    return (
+      <RoleDashboard
+        logoConfig={logoConfig}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={() => setIsDarkMode(prev => !prev)}
+        onSelectConsultant={handleSelectConsultant}
+        onLoginEmployee={handleLoginEmployee}
+        onLoginAdmin={handleLoginAdmin}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
@@ -158,19 +218,18 @@ export default function App() {
       <Header
         logoConfig={logoConfig}
         currentRole={currentRole}
+        userAuthRole={userAuthRole}
         employeeId={employeeId}
         isEmployeeVerified={isEmployeeVerified}
         onRoleChange={handleRoleChange}
-        onOpenEmployeeModal={() => {
-          setEmployeeModalMessage('Verify your Employee ID to access permanent employee policies.');
-          setIsEmployeeModalOpen(true);
-        }}
         isAdminLoggedIn={isAdminLoggedIn}
         onOpenAdmin={handleOpenAdmin}
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode(prev => !prev)}
         activeView={activeView}
         onViewChange={setActiveView}
+        onSignOut={handleSignOut}
+        onOpenDashboard={() => setActiveView('dashboard')}
       />
 
       {/* Main Content Area */}
@@ -209,7 +268,7 @@ export default function App() {
             onUpdatePolicies={handleUpdatePolicies}
             logoConfig={logoConfig}
             onUpdateLogoConfig={handleUpdateLogoConfig}
-            onLogout={handleAdminLogout}
+            onLogout={handleSignOut}
             onClose={() => setActiveView('chat')}
             initialSelectedCategory={previewCitationCategory}
           />
@@ -234,8 +293,8 @@ export default function App() {
         category={previewCitationCategory}
         isOpen={isPreviewModalOpen}
         onClose={() => setIsPreviewModalOpen(false)}
-        onOpenInAdmin={(cat) => {
-          if (isAdminLoggedIn) {
+        onOpenInAdmin={() => {
+          if (isAdminLoggedIn || userAuthRole === 'admin') {
             setActiveView('admin');
           } else {
             setIsAdminModalOpen(true);

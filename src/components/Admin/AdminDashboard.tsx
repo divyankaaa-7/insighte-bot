@@ -594,7 +594,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         <div>
                           <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
-                            Keywords for RAG Retrieval (comma-separated)
+                            Keywords for Policy Search (comma-separated)
                           </label>
                           <input
                             type="text"
@@ -1022,7 +1022,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  Keywords (comma-separated for RAG retrieval)
+                  Keywords (comma-separated for search & retrieval)
                 </label>
                 <input
                   type="text"

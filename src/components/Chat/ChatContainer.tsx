@@ -16,20 +16,85 @@ import {
   UserCheck,
   Briefcase,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  Shield,
+  Ban
 } from 'lucide-react';
 import { ChatMessage, PolicyCategory, PolicyCitation, PolicyRole } from '../../types';
 import { exportChatToCSV, exportChatToPDF, shareToWhatsApp, shareViaEmail, copyTranscript } from '../../utils/exportChat';
 
 interface ChatContainerProps {
-  currentRole: PolicyRole;
+  currentRole: PolicyRole | 'admin';
   employeeId: string;
   isEmployeeVerified: boolean;
-  onRoleChange: (role: PolicyRole) => void;
+  onRoleChange: (role: PolicyRole | 'admin') => void;
   onOpenEmployeeModal: (msg?: string) => void;
   onSelectCitation: (citation: PolicyCitation) => void;
   activePolicies: PolicyCategory[];
 }
+
+const getInitialWelcomeMessage = (role: PolicyRole | 'admin', employeeId: string): ChatMessage => {
+  if (role === 'admin') {
+    return {
+      id: 'welcome-admin',
+      sender: 'bot',
+      role: 'admin',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: `Hello and welcome to **Insighte Policy Intelligence (Admin Mode)**! 🛡️
+
+You have complete administrative clearance across both **Consultant** and **Employee** policy handbooks.
+- Ask questions regarding any clause across all 11 policy chapters
+- Check compliance standards, statutory POSH inquiry frameworks, and leave notice mandates
+- Use the **Admin Dashboard** in the top navigation to add, modify, or sync live policy chapters`,
+      suggestedActions: [
+        { label: '📋 View All Policies Overview', action: 'ask_query', payload: { query: 'Provide a complete summary of all consultant and employee policies' } },
+        { label: '⚖️ POSH Compliance Rules', action: 'ask_query', payload: { query: 'What is the statutory POSH inquiry procedure and 90-day timeline?' } }
+      ]
+    };
+  }
+
+  if (role === 'employee') {
+    return {
+      id: 'welcome-employee',
+      sender: 'bot',
+      role: 'employee',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: `Hello and welcome to **Insighte Employee Policy Assistant**! 🏛️
+
+You are authenticated as a verified team member **(${employeeId || 'INS-EMP-VERIFIED'})**.
+You have access to internal permanent staff policies, including:
+- Paid Earned Leave (EL), Casual Leave (CL), and Sick Leave quotas
+- Employee Provident Fund (EPF), ESI, and ₹5,00,000 Group Health Insurance
+- Annual appraisal cycles, merit increments, and career progression
+- 30-day resignation notice period and separation settlement guidelines`,
+      suggestedActions: [
+        { label: '🏖️ Check Paid Leave Balance', action: 'ask_query', payload: { query: 'How many paid earned leaves (EL) do permanent employees get?' } },
+        { label: '🏥 Health Insurance Details', action: 'ask_query', payload: { query: 'What is the Insighte Group Health Insurance coverage limit?' } }
+      ]
+    };
+  }
+
+  return {
+    id: 'welcome-consultant',
+    sender: 'bot',
+    role: 'consultant',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    text: `Hello and welcome to **Insighte Consultant Policy Assistant**! 🌸
+
+I am your dedicated policy assistant for **shadow teachers, therapists, and contractual consultants** supporting children with Autism Spectrum Disorder (ASD), ADHD, and developmental differences.
+
+**Direct Consultant Access (No Login Required):**
+- **Classroom Ethics:** Non-intrusive support, prompt fading, and student privacy
+- **Sensory Meltdown Support:** Co-regulation procedures and crisis de-escalation
+- **Leave Protocol:** 48-hour prior notice for planned absence and 7:00 AM emergency calls
+- **Monthly Invoicing:** Timesheet submission before 28th of every month`,
+    suggestedActions: [
+      { label: '📋 Leave Notice Policy', action: 'ask_query', payload: { query: 'What is the leave notice policy for consultants?' } },
+      { label: '🧘 Sensory Meltdown Protocol', action: 'ask_query', payload: { query: 'What is the protocol for handling a sensory meltdown in class?' } },
+      { label: '💵 Monthly Invoicing Rules', action: 'ask_query', payload: { query: 'When must monthly session invoices be submitted?' } }
+    ]
+  };
+};
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
   currentRole,
@@ -40,26 +105,32 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   onSelectCitation,
   activePolicies
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome-msg',
-      sender: 'bot',
-      role: 'consultant',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: `Hello and welcome to **Insighte Policy Intelligence**! 🌸
-
-I am your dedicated policy assistant for **shadow teachers, therapists, consultants, and team members** supporting children with Autism Spectrum Disorder (ASD), ADHD, and developmental differences.
-
-**By default, you are currently in Consultant Mode.**
-Are you accessing this as a **Consultant** or an **Employee**?
-- **Consultants** can ask anything about classroom ethics, meltdown protocols, leave notice, POSH, and monthly invoicing.
-- **Employees** can access full internal compensation, EPF, health insurance, and permanent staff policies by verifying their Employee ID.`,
-      suggestedActions: [
-        { label: '✨ Continue as Consultant', action: 'ask_query', payload: { query: 'What is the leave notice policy for consultants?' } },
-        { label: '🔐 I am an Employee (Verify ID)', action: 'verify_id' }
-      ]
-    }
+  // resetKey forces messages to reset without triggering the role-switch effect
+  const [resetKey, setResetKey] = useState(0);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    getInitialWelcomeMessage(currentRole, employeeId)
   ]);
+
+  // When currentRole switches (but NOT on reset), append a context switch notice
+  const prevRoleRef = useRef(currentRole);
+  const isResettingRef = useRef(false);
+  useEffect(() => {
+    if (prevRoleRef.current !== currentRole) {
+      prevRoleRef.current = currentRole;
+      // If this was triggered by a reset, don't add the notice
+      if (!isResettingRef.current) {
+        const roleNotice: ChatMessage = {
+          id: `switch-${Date.now()}`,
+          sender: 'system',
+          role: currentRole,
+          text: `Switched to **${currentRole.toUpperCase()}** Mode. Assistant context updated.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setMessages(prev => [...prev, roleNotice]);
+      }
+      isResettingRef.current = false;
+    }
+  }, [currentRole]);
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -67,6 +138,7 @@ Are you accessing this as a **Consultant** or an **Employee**?
   const [showExportMenu, setShowExportMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,11 +148,32 @@ Are you accessing this as a **Consultant** or an **Employee**?
     scrollToBottom();
   }, [messages, isLoading]);
 
+  const handleResetChat = () => {
+    if (window.confirm('Clear conversation history and reset chat?')) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      isResettingRef.current = true;
+      setIsLoading(false);
+      setInput('');
+      // Completely fresh start with only the welcome message
+      setMessages([getInitialWelcomeMessage(currentRole, employeeId)]);
+      setResetKey(prev => prev + 1);
+    }
+  };
+
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if (!query || isLoading) return;
 
     setInput('');
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     // Append user message
     const userMsg: ChatMessage = {
@@ -95,13 +188,14 @@ Are you accessing this as a **Consultant** or an **Employee**?
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/rag/ask', {
+      const response = await fetch('/api/chat/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           query,
           role: currentRole,
-          employeeId: isEmployeeVerified ? employeeId : '',
+          employeeId: (isEmployeeVerified || currentRole === 'employee' || currentRole === 'admin') ? employeeId : '',
           clientPolicies: activePolicies
         })
       });
@@ -126,27 +220,33 @@ Are you accessing this as a **Consultant** or an **Employee**?
 
       setMessages(prev => [...prev, botMsg]);
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       console.error('Chat error:', err);
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         sender: 'bot',
         role: currentRole,
-        text: `⚠️ **Error:** Unable to query the policy system at this time. (${err.message || 'Network issue'}). Please try again.`,
+        text: `⚠️ **Notice:** The assistant is experiencing network traffic. Please try submitting your inquiry again.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isError: true
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
   const handleActionClick = (action: any) => {
     if (action.action === 'verify_id') {
-      onOpenEmployeeModal('Please enter your Employee ID to unlock full employee policies.');
+      if (currentRole === 'consultant') {
+        alert('🚫 Access Blocked: Consultants cannot switch to employee policy inside chat. Please Sign Out or Return to Dashboard to login with Employee credentials.');
+        return;
+      }
+      onOpenEmployeeModal('Please enter your Employee ID and password to unlock full employee policies.');
     } else if (action.action === 'switch_role') {
-      if (action.payload?.role === 'employee' && !isEmployeeVerified) {
-        onOpenEmployeeModal('Please verify your Employee ID before switching to Employee policy.');
+      if (action.payload?.role === 'employee' && !isEmployeeVerified && currentRole === 'consultant') {
+        alert('🚫 Access Blocked: Consultants cannot switch to employee policy. Staff login is required.');
       } else {
         onRoleChange(action.payload?.role);
       }
@@ -167,13 +267,17 @@ Are you accessing this as a **Consultant** or an **Employee**?
     'What is the notice period for taking leave as a shadow teacher?',
     'What is the protocol for handling a sensory meltdown in class?',
     'When must monthly session invoices be submitted?',
-    'Can I post photos of my student on Instagram or WhatsApp?',
-    'What is the employee PF and annual appraisal policy?' // Test prompt to demonstrate restriction
-  ] : [
+    'Can I post photos of my student on Instagram or WhatsApp?'
+  ] : currentRole === 'employee' ? [
     'How many paid earned leaves (EL) do permanent employees get?',
     'What is the Insighte Group Health Insurance coverage limit?',
     'What is the statutory POSH inquiry timeline (90 days)?',
     'What is the non-compete period after employee separation?'
+  ] : [
+    'Give an executive summary of shadow teacher leave and notice rules',
+    'What are the full-time employee EPF and health insurance terms?',
+    'What are the mandatory steps in the internal grievance redressal mechanism?',
+    'Compare consultant invoice guidelines with permanent payroll policies'
   ];
 
   return (
@@ -184,22 +288,34 @@ Are you accessing this as a **Consultant** or an **Employee**?
         
         {/* Active Role status indicator */}
         <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-pink-50 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
+          <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+            currentRole === 'consultant'
+              ? 'bg-pink-50 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800'
+              : currentRole === 'employee'
+              ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+              : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+          }`}>
             {currentRole === 'consultant' ? (
               <Briefcase className="w-3.5 h-3.5 text-pink-600" />
-            ) : (
+            ) : currentRole === 'employee' ? (
               <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+            ) : (
+              <Shield className="w-3.5 h-3.5 text-emerald-600" />
             )}
-            <span className="capitalize">{currentRole} Policy Chat</span>
+            <span className="capitalize">{currentRole} Policy Bot</span>
           </div>
 
           {currentRole === 'consultant' ? (
             <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
               Contractual & Shadow Teacher Guidelines
             </span>
+          ) : currentRole === 'employee' ? (
+            <span className="hidden sm:inline text-xs text-emerald-600 dark:text-emerald-400 font-medium font-mono">
+              Verified ID: {employeeId || 'INS-EMP-VERIFIED'}
+            </span>
           ) : (
             <span className="hidden sm:inline text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-              Verified ID: {employeeId || 'INS-EMP-VERIFIED'}
+              Administrator Oversight Active
             </span>
           )}
         </div>
@@ -257,13 +373,10 @@ Are you accessing this as a **Consultant** or an **Employee**?
           </button>
 
           <button
-            onClick={() => {
-              if (window.confirm('Clear conversation history?')) {
-                setMessages([messages[0]]);
-              }
-            }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors ml-1"
-            title="Reset Chat"
+            id="reset-chat-btn"
+            onClick={handleResetChat}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
+            title="Reset Chat History"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
@@ -275,7 +388,7 @@ Are you accessing this as a **Consultant** or an **Employee**?
       {/* Print-only Header for PDF Export */}
       <div className="hidden print-only mb-6 pb-4 border-b border-slate-300">
         <h1 className="text-2xl font-bold text-slate-900">Insighte Child Development & Inclusive Education</h1>
-        <p className="text-xs text-slate-600">Official RAG Policy Assistant Consultation Audit Log</p>
+        <p className="text-xs text-slate-600">Official Policy Assistant Consultation Audit Log</p>
         <div className="text-xs text-slate-500 mt-2 flex justify-between">
           <span>Role: {currentRole.toUpperCase()}</span>
           <span>Date: {new Date().toLocaleString()}</span>
@@ -387,7 +500,7 @@ Are you accessing this as a **Consultant** or an **Employee**?
             </div>
             <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-2xl rounded-tl-xs border border-slate-200 dark:border-slate-700 shadow-xs flex items-center space-x-2 text-xs text-slate-500 dark:text-slate-400">
               <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping" />
-              <span>Retrieving policy sections & generating grounded answer...</span>
+              <span>Searching policy handbook &amp; preparing answer...</span>
             </div>
           </div>
         )}

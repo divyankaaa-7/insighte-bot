@@ -77,7 +77,7 @@ export function checkConsultantQueryingEmployeePolicy(query: string, currentRole
   return false;
 }
 
-// Retrieve relevant policy categories (RAG retrieval)
+// Retrieve relevant policy categories from documentation
 export function retrievePolicyContext(
   query: string,
   categories: PolicyCategory[],
@@ -152,8 +152,8 @@ export function validateEmployeeId(id: string): boolean {
   return INSIGHTE_COMPANY_PROFILE.verifiedEmployeeIds.includes(cleanId);
 }
 
-// Fallback high-quality answer generator when Gemini API is streaming or offline
-export function generateLocalRAGResponse(
+// Fallback high-quality answer generator when Gemini API is unavailable
+export function generateLocalPolicyResponse(
   query: string,
   categories: PolicyCategory[],
   role: PolicyRole

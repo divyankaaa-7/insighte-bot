@@ -1,4 +1,5 @@
 export type PolicyRole = 'consultant' | 'employee';
+export type UserRole = 'consultant' | 'employee' | 'admin';
 
 export interface PolicyCategory {
   id: string;
@@ -28,7 +29,7 @@ export interface SuggestedAction {
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'bot' | 'system';
-  role: PolicyRole;
+  role: PolicyRole | 'admin';
   text: string;
   timestamp: string;
   citations?: PolicyCitation[];
