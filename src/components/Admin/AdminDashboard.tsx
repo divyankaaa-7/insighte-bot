@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   Shield, 
   BookOpen, 
@@ -19,10 +19,23 @@ import {
   Highlighter,
   ChevronRight,
   Eye,
-  LogOut
+  LogOut,
+  Undo2,
+  MessageSquareText,
+  RefreshCw
 } from 'lucide-react';
 import { LogoConfig, PolicyCategory, PolicyRole } from '../../types';
 import { INITIAL_CONSULTANT_POLICIES, INITIAL_EMPLOYEE_POLICIES } from '../../data/defaultPolicies';
+
+interface ChatFeedback {
+  id: string;
+  role: PolicyRole | 'admin';
+  question: string;
+  answer: string;
+  comment: string;
+  rating: 'helpful' | 'not-helpful' | null;
+  createdAt: string;
+}
 
 interface AdminDashboardProps {
   policies: PolicyCategory[];
@@ -43,9 +56,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onClose,
   initialSelectedCategory
 }) => {
-  const [activeTab, setActiveTab] = useState<'consultant' | 'employee' | 'branding' | 'backup'>(
+  const [activeTab, setActiveTab] = useState<'consultant' | 'employee' | 'branding' | 'backup' | 'feedback'>(
     initialSelectedCategory ? initialSelectedCategory.policyType : 'consultant'
   );
+  const [chatFeedback, setChatFeedback] = useState<ChatFeedback[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
 
   // Selected category in active tab
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
@@ -74,6 +90,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newSummary, setNewSummary] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newKeywords, setNewKeywords] = useState('');
+
+  // Undo history stack: each entry is a snapshot of policies before the change
+  const MAX_HISTORY = 20;
+  const [policyHistory, setPolicyHistory] = useState<PolicyCategory[][]>([]);
+  const [undoNotice, setUndoNotice] = useState(false);
+
+  const loadChatFeedback = useCallback(async () => {
+    setFeedbackLoading(true);
+    setFeedbackError('');
+    try {
+      const response = await fetch('/api/admin/feedback');
+      if (!response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Feedback service is unavailable. Restart the app server and try again.');
+      }
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Could not load feedback.');
+      }
+      setChatFeedback(result.feedback);
+    } catch (error) {
+      setFeedbackError(error instanceof Error ? error.message : 'Could not load feedback.');
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'feedback') {
+      void loadChatFeedback();
+    }
+  }, [activeTab, loadChatFeedback]);
+
+  // Wrapped update: pushes current policies to history before updating
+  const handleUpdatePoliciesWithHistory = useCallback((updated: PolicyCategory[]) => {
+    setPolicyHistory(prev => {
+      const newHistory = [...prev, policies];
+      return newHistory.length > MAX_HISTORY ? newHistory.slice(newHistory.length - MAX_HISTORY) : newHistory;
+    });
+    onUpdatePolicies(updated);
+  }, [policies, onUpdatePolicies]);
+
+  // Undo last change
+  const handleUndo = () => {
+    if (policyHistory.length === 0) return;
+    const previousPolicies = policyHistory[policyHistory.length - 1];
+    setPolicyHistory(prev => prev.slice(0, prev.length - 1));
+    onUpdatePolicies(previousPolicies);
+    setUndoNotice(true);
+    setTimeout(() => setUndoNotice(false), 2000);
+  };
 
   // Filter policies for current tab
   const tabPolicies = useMemo(() => {
@@ -145,7 +211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return p;
     });
 
-    onUpdatePolicies(updated);
+    handleUpdatePoliciesWithHistory(updated);
     setIsEditing(false);
     showSaveSuccess();
   };
@@ -166,7 +232,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       lastUpdated: new Date().toISOString().slice(0, 10)
     };
 
-    onUpdatePolicies([...policies, newCat]);
+    handleUpdatePoliciesWithHistory([...policies, newCat]);
     setSelectedCategoryId(newCat.id);
     setIsAddModalOpen(false);
     setNewTitle('');
@@ -184,7 +250,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     if (window.confirm(`Are you sure you want to remove the category "${title}" from the ${activeTab} policy book?`)) {
       const updated = policies.filter(p => p.id !== catId);
-      onUpdatePolicies(updated);
+      handleUpdatePoliciesWithHistory(updated);
       setSelectedCategoryId(updated.find(p => p.policyType === activeTab)?.id || '');
       showSaveSuccess();
     }
@@ -205,7 +271,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleResetDefaults = () => {
     if (window.confirm('Reset all policies to standard Insighte official handbook defaults? Any custom edits will be replaced.')) {
       const defaults = [...INITIAL_CONSULTANT_POLICIES, ...INITIAL_EMPLOYEE_POLICIES];
-      onUpdatePolicies(defaults);
+      handleUpdatePoliciesWithHistory(defaults);
       showSaveSuccess();
     }
   };
@@ -232,7 +298,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       try {
         const json = JSON.parse(event.target?.result as string);
         if (Array.isArray(json.policies)) {
-          onUpdatePolicies(json.policies);
+          handleUpdatePoliciesWithHistory(json.policies);
           if (json.logoConfig) onUpdateLogoConfig(json.logoConfig);
           showSaveSuccess();
           alert('Policies and branding imported successfully!');
@@ -247,7 +313,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto w-full p-2 sm:p-6 space-y-6">
+    <div className="h-full min-h-0 w-full overflow-y-auto p-2 sm:p-6 space-y-6">
       
       {/* Top Banner */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -271,11 +337,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
-          {savedNotice && (
+          {savedNotice && !undoNotice && (
             <span className="flex items-center space-x-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 animate-in fade-in">
               <Check className="w-4 h-4" />
               <span>Saved Successfully</span>
             </span>
+          )}
+
+          {undoNotice && (
+            <span className="flex items-center space-x-1 text-xs font-semibold text-amber-700 dark:text-amber-300 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 animate-in fade-in">
+              <Check className="w-4 h-4" />
+              <span>Change reverted</span>
+            </span>
+          )}
+
+          {policyHistory.length > 0 && (
+            <button
+              onClick={handleUndo}
+              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-amber-200 dark:border-amber-800 transition-colors"
+              title="Undo the most recent policy change"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              <span>Undo last change</span>
+            </button>
           )}
 
           <button
@@ -349,6 +433,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <FileUp className="w-4 h-4" />
           <span>Import / Export & Reset</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('feedback')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+            activeTab === 'feedback'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <MessageSquareText className="w-4 h-4" />
+          <span>Chat Feedback ({chatFeedback.length})</span>
         </button>
       </div>
 
@@ -945,6 +1041,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'feedback' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Chatbot Feedback</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Review comments alongside their questions and answers, then use curated examples to improve future responses.
+              </p>
+              <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                Feedback is collected for review; it does not automatically train the model.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify(chatFeedback, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `insighte-chat-feedback-${new Date().toISOString().slice(0, 10)}.json`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }}
+                disabled={chatFeedback.length === 0}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export feedback
+              </button>
+              <button
+                onClick={() => void loadChatFeedback()}
+                disabled={feedbackLoading}
+                className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${feedbackLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {feedbackError && (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+              {feedbackError}
+            </div>
+          )}
+
+          {feedbackLoading ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+              Loading feedback...
+            </div>
+          ) : !feedbackError && chatFeedback.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+              No chatbot feedback has been submitted yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {chatFeedback.map(item => (
+                <article key={item.id} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {item.role} {item.rating ? `· ${item.rating === 'helpful' ? 'Helpful' : 'Not helpful'}` : ''}
+                    </span>
+                    <time className="text-slate-400 dark:text-slate-500">{new Date(item.createdAt).toLocaleString()}</time>
+                  </div>
+                  <div>
+                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Question</h4>
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700 dark:text-slate-300">{item.question}</p>
+                  </div>
+                  <div>
+                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Answer</h4>
+                    <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-600 dark:text-slate-400">{item.answer}</p>
+                  </div>
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Comment</h4>
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800 dark:text-slate-200">{item.comment}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

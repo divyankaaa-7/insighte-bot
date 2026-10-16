@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, 
-  Download, 
   FileSpreadsheet, 
   Printer, 
   Share2, 
@@ -12,19 +11,23 @@ import {
   AlertTriangle, 
   Lock, 
   BookOpen, 
-  RefreshCw,
   UserCheck,
   Briefcase,
   HelpCircle,
   ExternalLink,
   Shield,
-  Ban
+  MessageSquarePlus,
+  ChevronDown,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquareText
 } from 'lucide-react';
 import { ChatMessage, PolicyCategory, PolicyCitation, PolicyRole } from '../../types';
 import { exportChatToCSV, exportChatToPDF, shareToWhatsApp, shareViaEmail, copyTranscript } from '../../utils/exportChat';
 
 interface ChatContainerProps {
   currentRole: PolicyRole | 'admin';
+  isAdminAuthenticated: boolean;
   employeeId: string;
   isEmployeeVerified: boolean;
   onRoleChange: (role: PolicyRole | 'admin') => void;
@@ -40,12 +43,7 @@ const getInitialWelcomeMessage = (role: PolicyRole | 'admin', employeeId: string
       sender: 'bot',
       role: 'admin',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: `Hello and welcome to **Insighte Policy Intelligence (Admin Mode)**! 🛡️
-
-You have complete administrative clearance across both **Consultant** and **Employee** policy handbooks.
-- Ask questions regarding any clause across all 11 policy chapters
-- Check compliance standards, statutory POSH inquiry frameworks, and leave notice mandates
-- Use the **Admin Dashboard** in the top navigation to add, modify, or sync live policy chapters`,
+      text: `Hello and welcome to **Insighte Policy Intelligence (Admin Mode)**! 🛡️\n\nYou have complete administrative clearance across both **Consultant** and **Employee** policy handbooks.\n- Ask questions regarding any clause across all 11 policy chapters\n- Check compliance standards, statutory POSH inquiry frameworks, and leave notice mandates\n- Use the **Admin Dashboard** in the top navigation to add, modify, or sync live policy chapters`,
       suggestedActions: [
         { label: '📋 View All Policies Overview', action: 'ask_query', payload: { query: 'Provide a complete summary of all consultant and employee policies' } },
         { label: '⚖️ POSH Compliance Rules', action: 'ask_query', payload: { query: 'What is the statutory POSH inquiry procedure and 90-day timeline?' } }
@@ -59,14 +57,7 @@ You have complete administrative clearance across both **Consultant** and **Empl
       sender: 'bot',
       role: 'employee',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: `Hello and welcome to **Insighte Employee Policy Assistant**! 🏛️
-
-You are authenticated as a verified team member **(${employeeId || 'INS-EMP-VERIFIED'})**.
-You have access to internal permanent staff policies, including:
-- Paid Earned Leave (EL), Casual Leave (CL), and Sick Leave quotas
-- Employee Provident Fund (EPF), ESI, and ₹5,00,000 Group Health Insurance
-- Annual appraisal cycles, merit increments, and career progression
-- 30-day resignation notice period and separation settlement guidelines`,
+      text: `Hello and welcome to **Insighte Employee Policy Assistant**! 🏛️\n\nYou are authenticated as a verified team member **(${employeeId || 'INS-EMP-VERIFIED'})**.\nYou have access to internal permanent staff policies, including:\n- Paid Earned Leave (EL), Casual Leave (CL), and Sick Leave quotas\n- Employee Provident Fund (EPF), ESI, and ₹5,00,000 Group Health Insurance\n- Annual appraisal cycles, merit increments, and career progression\n- 30-day resignation notice period and separation settlement guidelines`,
       suggestedActions: [
         { label: '🏖️ Check Paid Leave Balance', action: 'ask_query', payload: { query: 'How many paid earned leaves (EL) do permanent employees get?' } },
         { label: '🏥 Health Insurance Details', action: 'ask_query', payload: { query: 'What is the Insighte Group Health Insurance coverage limit?' } }
@@ -79,15 +70,7 @@ You have access to internal permanent staff policies, including:
     sender: 'bot',
     role: 'consultant',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    text: `Hello and welcome to **Insighte Consultant Policy Assistant**! 🌸
-
-I am your dedicated policy assistant for **shadow teachers, therapists, and contractual consultants** supporting children with Autism Spectrum Disorder (ASD), ADHD, and developmental differences.
-
-**Direct Consultant Access (No Login Required):**
-- **Classroom Ethics:** Non-intrusive support, prompt fading, and student privacy
-- **Sensory Meltdown Support:** Co-regulation procedures and crisis de-escalation
-- **Leave Protocol:** 48-hour prior notice for planned absence and 7:00 AM emergency calls
-- **Monthly Invoicing:** Timesheet submission before 28th of every month`,
+    text: `Hello and welcome to **Insighte Consultant Policy Assistant**! 🌸\n\nI am your dedicated policy assistant for **shadow teachers, therapists, and contractual consultants** supporting children with Autism Spectrum Disorder (ASD), ADHD, and developmental differences.\n\n**Direct Consultant Access (No Login Required):**\n- **Classroom Ethics:** Non-intrusive support, prompt fading, and student privacy\n- **Sensory Meltdown Support:** Co-regulation procedures and crisis de-escalation\n- **Leave Protocol:** 48-hour prior notice for planned absence and 7:00 AM emergency calls\n- **Monthly Invoicing:** Timesheet submission before 28th of every month`,
     suggestedActions: [
       { label: '📋 Leave Notice Policy', action: 'ask_query', payload: { query: 'What is the leave notice policy for consultants?' } },
       { label: '🧘 Sensory Meltdown Protocol', action: 'ask_query', payload: { query: 'What is the protocol for handling a sensory meltdown in class?' } },
@@ -98,6 +81,7 @@ I am your dedicated policy assistant for **shadow teachers, therapists, and cont
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
   currentRole,
+  isAdminAuthenticated,
   employeeId,
   isEmployeeVerified,
   onRoleChange,
@@ -105,19 +89,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   onSelectCitation,
   activePolicies
 }) => {
-  // resetKey forces messages to reset without triggering the role-switch effect
   const [resetKey, setResetKey] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     getInitialWelcomeMessage(currentRole, employeeId)
   ]);
 
-  // When currentRole switches (but NOT on reset), append a context switch notice
   const prevRoleRef = useRef(currentRole);
   const isResettingRef = useRef(false);
   useEffect(() => {
     if (prevRoleRef.current !== currentRole) {
       prevRoleRef.current = currentRole;
-      // If this was triggered by a reset, don't add the notice
       if (!isResettingRef.current) {
         const roleNotice: ChatMessage = {
           id: `switch-${Date.now()}`,
@@ -135,10 +116,28 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [messageFeedback, setMessageFeedback] = useState<Record<string, 'helpful' | 'not-helpful'>>({});
+  const [feedbackComments, setFeedbackComments] = useState<Record<string, string>>({});
+  const [openFeedbackForms, setOpenFeedbackForms] = useState<Record<string, boolean>>({});
+  const [submittedFeedback, setSubmittedFeedback] = useState<Record<string, boolean>>({});
+  const [submittingFeedback, setSubmittingFeedback] = useState<Record<string, boolean>>({});
+  const [feedbackErrors, setFeedbackErrors] = useState<Record<string, string>>({});
+  const shareMenuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const responseRole: PolicyRole | 'admin' = isAdminAuthenticated ? 'admin' : currentRole;
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target as Node)) {
+        setShowShareMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -149,7 +148,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   }, [messages, isLoading]);
 
   const handleResetChat = () => {
-    if (window.confirm('Clear conversation history and reset chat?')) {
+    if (window.confirm('Clear conversation history and start a new chat?')) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
@@ -157,8 +156,13 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       isResettingRef.current = true;
       setIsLoading(false);
       setInput('');
-      // Completely fresh start with only the welcome message
       setMessages([getInitialWelcomeMessage(currentRole, employeeId)]);
+      setMessageFeedback({});
+      setFeedbackComments({});
+      setOpenFeedbackForms({});
+      setSubmittedFeedback({});
+      setSubmittingFeedback({});
+      setFeedbackErrors({});
       setResetKey(prev => prev + 1);
     }
   };
@@ -175,11 +179,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Append user message
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
-      role: currentRole,
+      role: responseRole,
       text: query,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -194,8 +197,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         signal: controller.signal,
         body: JSON.stringify({
           query,
-          role: currentRole,
-          employeeId: (isEmployeeVerified || currentRole === 'employee' || currentRole === 'admin') ? employeeId : '',
+          role: responseRole,
+          employeeId: (isEmployeeVerified || responseRole === 'employee' || responseRole === 'admin') ? employeeId : '',
           clientPolicies: activePolicies
         })
       });
@@ -209,7 +212,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
         sender: 'bot',
-        role: currentRole,
+        role: responseRole,
         text: data.answer || 'No response generated.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         citations: data.citations || [],
@@ -225,7 +228,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         sender: 'bot',
-        role: currentRole,
+        role: responseRole,
         text: `⚠️ **Notice:** The assistant is experiencing network traffic. Please try submitting your inquiry again.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isError: true
@@ -281,9 +284,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4.5rem)] max-w-5xl mx-auto w-full p-2 sm:p-4">
+    <div className="flex flex-col h-full min-h-0 w-full p-2 sm:p-4">
       
-      {/* Top Banner / Export Toolbar */}
+      {/* Top Banner / Toolbar */}
       <div className="no-print mb-3 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:px-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         
         {/* Active Role status indicator */}
@@ -307,7 +310,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
           {currentRole === 'consultant' ? (
             <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
-              Contractual & Shadow Teacher Guidelines
+              Contractual &amp; Shadow Teacher Guidelines
             </span>
           ) : currentRole === 'employee' ? (
             <span className="hidden sm:inline text-xs text-emerald-600 dark:text-emerald-400 font-medium font-mono">
@@ -320,65 +323,93 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           )}
         </div>
 
-        {/* Export and Save actions: CSV, PDF, WhatsApp, Mail, Copy */}
-        <div className="flex items-center space-x-1 sm:space-x-1.5">
+        {/* Right: Share dropdown + New Chat */}
+        <div className="flex items-center space-x-1.5">
           
-          <button
-            onClick={() => exportChatToCSV(messages, currentRole, employeeId)}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
-            title="Export chat history as CSV"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden md:inline">CSV</span>
-          </button>
+          {/* Share dropdown */}
+          <div className="relative" ref={shareMenuRef}>
+            <button
+              onClick={() => setShowShareMenu(prev => !prev)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors"
+              title="Share or export this conversation"
+            >
+              <Share2 className="w-3.5 h-3.5 text-pink-500" />
+              <span className="hidden md:inline">Share</span>
+              <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${showShareMenu ? 'rotate-180' : ''}`} />
+            </button>
 
-          <button
-            onClick={exportChatToPDF}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
-            title="Export / Print chat as PDF"
-          >
-            <Printer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span className="hidden md:inline">PDF</span>
-          </button>
+            {showShareMenu && (
+              <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-50 overflow-hidden">
+                <div className="px-3 py-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                  Export &amp; Share
+                </div>
 
-          <button
-            onClick={() => shareToWhatsApp(messages)}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
-            title="Share consultation summary to WhatsApp"
-          >
-            <Share2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span className="hidden md:inline">WhatsApp</span>
-          </button>
+                <button
+                  onClick={() => { shareToWhatsApp(messages); setShowShareMenu(false); }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center shrink-0">
+                    <Share2 className="w-3 h-3 text-emerald-600" />
+                  </div>
+                  <span>WhatsApp</span>
+                </button>
 
-          <button
-            onClick={() => shareViaEmail(messages, currentRole)}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
-            title="Send chat history via Email"
-          >
-            <Mail className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-            <span className="hidden md:inline">Email</span>
-          </button>
+                <button
+                  onClick={() => { shareViaEmail(messages, currentRole); setShowShareMenu(false); }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-purple-100 dark:bg-purple-950/60 flex items-center justify-center shrink-0">
+                    <Mail className="w-3 h-3 text-purple-600" />
+                  </div>
+                  <span>Email</span>
+                </button>
 
-          <button
-            onClick={handleCopy}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
-            title="Copy consultation transcript"
-          >
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-500" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
+                <button
+                  onClick={() => { exportChatToCSV(messages, currentRole, employeeId); setShowShareMenu(false); }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="w-3 h-3 text-blue-600" />
+                  </div>
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  onClick={() => { exportChatToPDF(); setShowShareMenu(false); }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-orange-50 dark:hover:bg-orange-950/40 hover:text-orange-700 dark:hover:text-orange-300 transition-colors"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-orange-100 dark:bg-orange-950/60 flex items-center justify-center shrink-0">
+                    <Printer className="w-3 h-3 text-orange-600" />
+                  </div>
+                  <span>Export PDF</span>
+                </button>
+
+                <button
+                  onClick={() => { handleCopy(); setShowShareMenu(false); }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border-t border-slate-100 dark:border-slate-800"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                    {copied ? (
+                      <Check className="w-3 h-3 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-3 h-3 text-slate-500" />
+                    )}
+                  </div>
+                  <span>{copied ? 'Copied!' : 'Copy Transcript'}</span>
+                </button>
+              </div>
             )}
-            <span className="hidden md:inline">{copied ? 'Copied' : 'Copy'}</span>
-          </button>
+          </div>
 
+          {/* New Chat button */}
           <button
-            id="reset-chat-btn"
+            id="new-chat-btn"
             onClick={handleResetChat}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
-            title="Reset Chat History"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-pink-50 hover:text-pink-600 dark:bg-slate-800 dark:hover:bg-pink-950/40 dark:hover:text-pink-300 border border-slate-200 dark:border-slate-700 transition-colors"
+            title="Start a new chat"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <MessageSquarePlus className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">New Chat</span>
           </button>
 
         </div>
@@ -387,7 +418,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
       {/* Print-only Header for PDF Export */}
       <div className="hidden print-only mb-6 pb-4 border-b border-slate-300">
-        <h1 className="text-2xl font-bold text-slate-900">Insighte Child Development & Inclusive Education</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Insighte Child Development &amp; Inclusive Education</h1>
         <p className="text-xs text-slate-600">Official Policy Assistant Consultation Audit Log</p>
         <div className="text-xs text-slate-500 mt-2 flex justify-between">
           <span>Role: {currentRole.toUpperCase()}</span>
@@ -397,8 +428,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto px-1 sm:px-2 py-4 space-y-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-xs border border-slate-200/80 dark:border-slate-800/80 p-3 sm:p-5 shadow-xs">
-        {messages.map((msg) => {
+        {messages.map((msg, index) => {
           const isUser = msg.sender === 'user';
+          const canRateAnswer = msg.sender === 'bot' && !msg.isError && messages[index - 1]?.sender === 'user';
           return (
             <div
               key={msg.id}
@@ -428,7 +460,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700/80 shadow-xs rounded-tl-xs'
                 }`}
               >
-                {/* Out of Domain alert banner */}
                 {msg.isOutOfDomain && (
                   <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 mb-1.5">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -436,7 +467,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                   </div>
                 )}
 
-                {/* Restricted Access alert banner */}
                 {msg.requiresEmployeeId && (
                   <div className="flex items-center space-x-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 mb-1.5">
                     <Lock className="w-4 h-4 shrink-0" />
@@ -444,12 +474,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                   </div>
                 )}
 
-                {/* Message Body text */}
                 <div className="whitespace-pre-line select-text">
                   {msg.text}
                 </div>
 
-                {/* Citations section with clickable page badges */}
                 {msg.citations && msg.citations.length > 0 && (
                   <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60 no-print">
                     <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1.5 flex items-center space-x-1">
@@ -472,7 +500,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                   </div>
                 )}
 
-                {/* Suggested actions (e.g. switch role, verify id) */}
                 {msg.suggestedActions && msg.suggestedActions.length > 0 && (
                   <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap gap-2 no-print">
                     {msg.suggestedActions.map((act, i) => (
@@ -487,12 +514,133 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                   </div>
                 )}
 
+                {canRateAnswer && (
+                  <div className="no-print mt-2 space-y-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <span>{messageFeedback[msg.id] ? 'Thanks for rating this answer' : 'Was this helpful?'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setMessageFeedback(prev => ({ ...prev, [msg.id]: 'helpful' }))}
+                        aria-label="Mark answer as helpful"
+                        aria-pressed={messageFeedback[msg.id] === 'helpful'}
+                        title="Helpful"
+                        className={`rounded-md p-1 transition-colors ${
+                          messageFeedback[msg.id] === 'helpful'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : 'hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-700 dark:hover:text-emerald-300'
+                        }`}
+                      >
+                        <ThumbsUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessageFeedback(prev => ({ ...prev, [msg.id]: 'not-helpful' }))}
+                        aria-label="Mark answer as not helpful"
+                        aria-pressed={messageFeedback[msg.id] === 'not-helpful'}
+                        title="Not helpful"
+                        className={`rounded-md p-1 transition-colors ${
+                          messageFeedback[msg.id] === 'not-helpful'
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                            : 'hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-700 dark:hover:text-rose-300'
+                        }`}
+                      >
+                        <ThumbsDown className="h-3.5 w-3.5" />
+                      </button>
+                      {!submittedFeedback[msg.id] && (
+                        <button
+                          type="button"
+                          onClick={() => setOpenFeedbackForms(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                          aria-expanded={Boolean(openFeedbackForms[msg.id])}
+                          className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-slate-100 hover:text-pink-600 dark:hover:bg-slate-700 dark:hover:text-pink-300"
+                        >
+                          <MessageSquareText className="h-3.5 w-3.5" />
+                          <span>{openFeedbackForms[msg.id] ? 'Close' : 'Write feedback'}</span>
+                        </button>
+                      )}
+                    </div>
+                    {openFeedbackForms[msg.id] && !submittedFeedback[msg.id] && (
+                      <form
+                        className="flex flex-col items-start gap-2 sm:flex-row sm:items-end"
+                        onSubmit={async (event) => {
+                          event.preventDefault();
+                          const comment = feedbackComments[msg.id]?.trim();
+                          const question = messages[index - 1];
+                          if (!comment || !question) return;
+
+                          setSubmittingFeedback(prev => ({ ...prev, [msg.id]: true }));
+                          setFeedbackErrors(prev => ({ ...prev, [msg.id]: '' }));
+                          try {
+                            const response = await fetch('/api/feedback', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                role: msg.role,
+                                question: question.text,
+                                answer: msg.text,
+                                rating: messageFeedback[msg.id] || null,
+                                comment
+                              })
+                            });
+                            if (!response.headers.get('content-type')?.includes('application/json')) {
+                              throw new Error('Feedback service is unavailable. Restart the app server and try again.');
+                            }
+                            const result = await response.json();
+                            if (!response.ok) {
+                              throw new Error(result.message || 'Could not submit feedback.');
+                            }
+                            setSubmittedFeedback(prev => ({ ...prev, [msg.id]: true }));
+                            setOpenFeedbackForms(prev => ({ ...prev, [msg.id]: false }));
+                          } catch (error) {
+                            setFeedbackErrors(prev => ({
+                              ...prev,
+                              [msg.id]: error instanceof Error ? error.message : 'Could not submit feedback. Please try again.'
+                            }));
+                          } finally {
+                            setSubmittingFeedback(prev => ({ ...prev, [msg.id]: false }));
+                          }
+                        }}
+                      >
+                        <div className="w-full sm:max-w-md space-y-1.5">
+                          <label className="sr-only" htmlFor={`feedback-${msg.id}`}>Write optional feedback</label>
+                          <textarea
+                            id={`feedback-${msg.id}`}
+                            value={feedbackComments[msg.id] || ''}
+                            onChange={(event) => setFeedbackComments(prev => ({ ...prev, [msg.id]: event.target.value }))}
+                            maxLength={1000}
+                            rows={2}
+                            placeholder="What could we improve? (optional)"
+                            disabled={submittingFeedback[msg.id]}
+                            className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-pink-950"
+                          />
+                          <p className="text-[10px] leading-relaxed">
+                            Your comment and this question/answer will be saved for admin review to help improve future responses. Avoid including personal or sensitive details.
+                          </p>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={!feedbackComments[msg.id]?.trim() || submittingFeedback[msg.id]}
+                          className="rounded-lg bg-pink-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {submittingFeedback[msg.id] ? 'Submitting...' : 'Send feedback'}
+                        </button>
+                      </form>
+                    )}
+                    {feedbackErrors[msg.id] && (
+                      <p role="alert" className="text-rose-600 dark:text-rose-400">{feedbackErrors[msg.id]}</p>
+                    )}
+                    {submittedFeedback[msg.id] && (
+                      <p role="status" className="text-emerald-600 dark:text-emerald-400">
+                        Thanks for sharing your feedback.
+                      </p>
+                    )}
+                  </div>
+                )}
+
               </div>
             </div>
           );
         })}
 
-        {/* Loading Indicator */}
         {isLoading && (
           <div className="flex items-start space-x-2 animate-in fade-in duration-200">
             <div className="w-8 h-8 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-300 flex items-center justify-center text-xs font-bold shrink-0">

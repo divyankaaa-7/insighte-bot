@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { randomUUID } from 'crypto';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { checkConsultantQueryingEmployeePolicy, checkIsOutOfDomain, retrievePolicyContext, validateEmployeeId, generateLocalPolicyResponse } from './src/utils/ragEngine';
@@ -11,6 +13,53 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
+const feedbackFilePath = path.resolve(process.cwd(), 'data', 'feedback.json');
+const adminSessions = new Map<string, number>();
+const adminSessionDurationMs = 8 * 60 * 60 * 1000;
+let feedbackWriteQueue: Promise<void> = Promise.resolve();
+
+type ChatFeedback = {
+  id: string;
+  role: PolicyRole | 'admin';
+  question: string;
+  answer: string;
+  comment: string;
+  rating: 'helpful' | 'not-helpful' | null;
+  createdAt: string;
+};
+
+const getAdminSession = (req: express.Request) => {
+  const sessionCookie = req.headers.cookie
+    ?.split(';')
+    .map(cookie => cookie.trim())
+    .find(cookie => cookie.startsWith('insighte_admin_session='));
+  return sessionCookie?.slice('insighte_admin_session='.length);
+};
+
+const requireAdminSession = (req: express.Request, res: express.Response) => {
+  const session = getAdminSession(req);
+  const expiresAt = session ? adminSessions.get(session) : undefined;
+  if (!session || !expiresAt || expiresAt <= Date.now()) {
+    if (session) adminSessions.delete(session);
+    res.status(401).json({ message: 'Administrator sign-in is required.' });
+    return false;
+  }
+  return true;
+};
+
+const readChatFeedback = async (): Promise<ChatFeedback[]> => {
+  try {
+    const file = await readFile(feedbackFilePath, 'utf8');
+    const parsed: unknown = JSON.parse(file);
+    if (!Array.isArray(parsed)) throw new Error('Feedback data file must contain an array.');
+    return parsed as ChatFeedback[];
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+};
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -89,9 +138,81 @@ app.post('/api/admin/verify', (req, res) => {
     (email === 'admin@insighte.in' && (password === 'admin123' || password === 'insighte@2025')) ||
     (email === 'admin' && (password === 'admin' || password === 'admin123'))
   ) {
+    const session = randomUUID();
+    adminSessions.set(session, Date.now() + adminSessionDurationMs);
+    res.setHeader(
+      'Set-Cookie',
+      `insighte_admin_session=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${adminSessionDurationMs / 1000}${isProduction ? '; Secure' : ''}`
+    );
     return res.json({ success: true, user: { email, role: 'admin', name: 'Insighte Policy Administrator' } });
   }
   return res.status(401).json({ success: false, message: 'Invalid admin credentials. Use admin@insighte.in / admin123' });
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  const session = getAdminSession(req);
+  if (session) adminSessions.delete(session);
+  res.setHeader(
+    'Set-Cookie',
+    `insighte_admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${isProduction ? '; Secure' : ''}`
+  );
+  return res.json({ success: true });
+});
+
+app.post('/api/feedback', async (req, res) => {
+  const { role, question, answer, comment, rating } = req.body ?? {};
+  if (!['consultant', 'employee', 'admin'].includes(role)) {
+    return res.status(400).json({ message: 'A valid policy role is required.' });
+  }
+  if (typeof question !== 'string' || !question.trim() || question.length > 5000) {
+    return res.status(400).json({ message: 'The question is required and must be under 5,000 characters.' });
+  }
+  if (typeof answer !== 'string' || !answer.trim() || answer.length > 15000) {
+    return res.status(400).json({ message: 'The answer is required and must be under 15,000 characters.' });
+  }
+  if (typeof comment !== 'string' || !comment.trim() || comment.length > 1000) {
+    return res.status(400).json({ message: 'Feedback is required and must be under 1,000 characters.' });
+  }
+  if (rating !== null && rating !== undefined && rating !== 'helpful' && rating !== 'not-helpful') {
+    return res.status(400).json({ message: 'Feedback rating is invalid.' });
+  }
+
+  const feedback: ChatFeedback = {
+    id: randomUUID(),
+    role,
+    question: question.trim(),
+    answer: answer.trim(),
+    comment: comment.trim(),
+    rating: rating ?? null,
+    createdAt: new Date().toISOString()
+  };
+
+  const write = feedbackWriteQueue.then(async () => {
+    const existingFeedback = await readChatFeedback();
+    await mkdir(path.dirname(feedbackFilePath), { recursive: true });
+    await writeFile(feedbackFilePath, JSON.stringify([...existingFeedback, feedback], null, 2), 'utf8');
+  });
+  feedbackWriteQueue = write.catch(error => {
+    console.error('Could not save chatbot feedback:', error);
+  });
+
+  try {
+    await write;
+    return res.status(201).json({ success: true });
+  } catch {
+    return res.status(500).json({ message: 'Could not save feedback. Please try again later.' });
+  }
+});
+
+app.get('/api/admin/feedback', async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    await feedbackWriteQueue;
+    return res.json({ feedback: await readChatFeedback() });
+  } catch (error) {
+    console.error('Could not read chatbot feedback:', error);
+    return res.status(500).json({ message: 'Could not load chatbot feedback.' });
+  }
 });
 
 // Sync updated policies from Admin
@@ -180,7 +301,7 @@ app.post('/api/chat/ask', async (req, res) => {
 Insighte provides shadow teachers, special education consultants, and clinical therapists for children with Autism Spectrum Disorder (ASD), ADHD, and developmental delays.
 
 USER ROLE: ${role.toUpperCase()}
-${role === 'employee' ? `VERIFIED EMPLOYEE ID: ${employeeId}` : 'CONSULTANT (CONTRACTUAL / SHADOW TEACHER)'}
+${role === 'employee' ? `VERIFIED EMPLOYEE ID: ${employeeId}` : role === 'admin' ? 'ADMINISTRATOR with full access to consultant and employee policy handbooks' : 'CONSULTANT (CONTRACTUAL / SHADOW TEACHER)'}
 
 INSTRUCTIONS:
 1. Answer the user's question accurately, concisely, and warmly based ONLY on the provided Insighte Policy documentation and company context.
@@ -237,7 +358,8 @@ Provide a grounded, professional response with explicit page citations:`;
   } catch (error: any) {
     console.error('Error in /api/chat/ask:', error);
     // Even in catch block, provide fallback answer from active policies instead of 500 error
-    const local = generateLocalPolicyResponse(req.body?.query || '', activePolicies, 'consultant');
+    const fallbackRole = req.body?.role === 'admin' ? 'employee' : 'consultant';
+    const local = generateLocalPolicyResponse(req.body?.query || '', activePolicies, fallbackRole);
     return res.json({
       answer: local.text,
       citations: local.citations,

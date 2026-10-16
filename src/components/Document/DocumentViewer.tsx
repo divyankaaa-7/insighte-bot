@@ -63,7 +63,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   }, [bookPolicies, searchQuery]);
 
   return (
-    <div className="max-w-7xl mx-auto w-full p-2 sm:p-6 space-y-6">
+    <div className="h-full min-h-0 w-full overflow-y-auto p-2 sm:p-6 space-y-6">
       
       {/* Top Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">

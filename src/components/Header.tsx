@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sun, 
   Moon, 
@@ -12,7 +12,16 @@ import {
   Ban, 
   LogOut, 
   LayoutDashboard,
-  AlertTriangle
+  AlertTriangle,
+  Settings,
+  Share2,
+  Mail,
+  FileSpreadsheet,
+  Printer,
+  Copy,
+  Check,
+  ChevronDown,
+  X
 } from 'lucide-react';
 import { LogoConfig, PolicyRole, UserRole } from '../types';
 
@@ -49,11 +58,22 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
   onOpenDashboard
 }) => {
-  // State for temporary blocked banner / toast alert
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [shakeButton, setShakeButton] = useState<'employee' | 'admin' | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
-  // Trigger block symbol action and feedback
+  // Close settings menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const triggerBlockedFeedback = (target: 'employee' | 'admin') => {
     setShakeButton(target);
     setBlockedMessage(
@@ -71,7 +91,6 @@ export const Header: React.FC<HeaderProps> = ({
     }, 4000);
   };
 
-  // Render icon based on logoConfig
   const renderLogoIcon = () => {
     if (logoConfig.customImageUrl) {
       return (
@@ -126,21 +145,18 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  // Whether user is authenticated as Employee or Admin
   const isEmployeeAuth = userAuthRole === 'employee' || isEmployeeVerified;
   const isAdminAuth = userAuthRole === 'admin' || isAdminLoggedIn;
   const isPureConsultant = userAuthRole === 'consultant' && !isEmployeeAuth && !isAdminAuth;
+  const isPureEmployee = userAuthRole === 'employee' && !isAdminAuth;
 
-  // Handle Employee option click
   const handleEmployeeClick = () => {
     if (isPureConsultant) {
-      // Strictly blocked for consultant
       triggerBlockedFeedback('employee');
       return;
     }
 
     if (isEmployeeAuth || isAdminAuth) {
-      // Can access employee bot
       onRoleChange('employee');
       onViewChange('chat');
     } else {
@@ -148,10 +164,8 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  // Handle Admin option click
   const handleAdminClick = () => {
     if (isPureConsultant || (!isAdminAuth && !isEmployeeAuth)) {
-      // Strictly blocked for consultant
       triggerBlockedFeedback('admin');
       return;
     }
@@ -165,9 +179,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
+      <div className="w-full px-4 sm:px-6 lg:px-8 min-h-[4.5rem] py-2 flex items-center justify-between gap-3">
         
-        {/* Top Left: Logo "insighte" in light pink color with custom branding */}
+        {/* Top Left: Logo */}
         <div 
           className="flex items-center space-x-3 cursor-pointer select-none group" 
           onClick={onOpenDashboard}
@@ -196,7 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Top Center: View switcher for quick navigation */}
+        {/* Top Center: View switcher */}
         <div className="hidden lg:flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
           <button
             onClick={() => onViewChange('chat')}
@@ -209,45 +223,44 @@ export const Header: React.FC<HeaderProps> = ({
             Policy Bot
           </button>
 
-          <button
-            onClick={() => onViewChange('document')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-all ${
-              activeView === 'document'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>Policy Viewer</span>
-          </button>
+          {!isAdminAuth && (
+            <button
+              onClick={() => onViewChange('document')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-all ${
+                activeView === 'document'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Policy Viewer</span>
+            </button>
+          )}
 
-          <button
-            onClick={isAdminAuth ? onOpenAdmin : () => triggerBlockedFeedback('admin')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-all ${
-              activeView === 'admin'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
-                : isPureConsultant
-                ? 'text-slate-400 dark:text-slate-600 cursor-not-allowed'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-            title={isPureConsultant ? '🚫 Admin Dashboard blocked for consultants' : 'Admin Dashboard'}
-          >
-            {isPureConsultant ? (
-              <Ban className="w-3.5 h-3.5 text-rose-500" />
-            ) : (
+          {/* Admin Dashboard: only show for Admin auth */}
+          {isAdminAuth && (
+            <button
+              onClick={onOpenAdmin}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-all ${
+                activeView === 'admin'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Admin Dashboard"
+            >
               <Shield className="w-3.5 h-3.5" />
-            )}
-            <span>Admin Dashboard</span>
-          </button>
+              <span>Admin Dashboard</span>
+            </button>
+          )}
         </div>
 
-        {/* Top Right: Role selector (Consultant / Employee / Admin), Dark/Light toggle, Sign Out */}
+        {/* Top Right: Role selector + Settings */}
         <div className="flex items-center space-x-2 sm:space-x-3">
           
-          {/* Role Options Group */}
+          {/* Role Options Group — context-aware visibility */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             
-            {/* 1. Consultant Option: Always accessible */}
+            {/* Consultant: always shown */}
             <button
               onClick={() => {
                 onRoleChange('consultant');
@@ -258,132 +271,189 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-white dark:bg-slate-700 text-pink-600 dark:text-pink-400 shadow-xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
-              title="Consultant Mode (Default for shadow teachers and contractual specialists)"
+              title="Consultant Mode"
             >
               <Briefcase className="w-3.5 h-3.5" />
               <span>Consultant</span>
             </button>
 
-            {/* 2. Employee Option: VISIBLE to consultant, but clicks are BLOCKED if consultant */}
-            <button
-              onClick={handleEmployeeClick}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all relative ${
-                shakeButton === 'employee' ? 'animate-bounce' : ''
-              } ${
-                currentRole === 'employee'
-                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold'
-                  : isPureConsultant
-                  ? 'text-rose-600/80 dark:text-rose-400/80 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-not-allowed border border-dashed border-rose-300 dark:border-rose-800'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-              title={
-                isPureConsultant
-                  ? '🚫 Access Blocked: Consultants cannot access Employee portal'
-                  : isEmployeeAuth
-                  ? `Employee Mode (Verified: ${employeeId || 'Active'})`
-                  : 'Employee Mode (Requires Employee Login)'
-              }
-            >
-              {isPureConsultant ? (
-                // BLOCK SYMBOL for consultant
-                <Ban className="w-3.5 h-3.5 text-rose-500" />
-              ) : isEmployeeAuth ? (
-                <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
-              ) : (
-                <Lock className="w-3.5 h-3.5" />
-              )}
-              <span>Employee</span>
+            {/* Employee: hidden for pure consultant; shown for employee & admin */}
+            {!isPureConsultant && (
+              <button
+                onClick={handleEmployeeClick}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all relative ${
+                  shakeButton === 'employee' ? 'animate-bounce' : ''
+                } ${
+                  currentRole === 'employee'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title={
+                  isEmployeeAuth
+                    ? `Employee Mode (Verified: ${employeeId || 'Active'})`
+                    : 'Employee Mode (Requires Employee Login)'
+                }
+              >
+                {isEmployeeAuth ? (
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5" />
+                )}
+                <span>Employee</span>
 
-              {/* Show block badge when in pure consultant mode */}
-              {isPureConsultant && (
-                <span className="hidden sm:inline text-[9px] font-bold px-1 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300">
-                  BLOCKED
-                </span>
-              )}
+                {isEmployeeAuth && currentRole === 'employee' && (
+                  <span className="hidden sm:inline text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                    {employeeId ? `(${employeeId})` : ''}
+                  </span>
+                )}
+              </button>
+            )}
 
-              {/* Verified ID badge for authenticated employees */}
-              {isEmployeeAuth && currentRole === 'employee' && (
-                <span className="hidden sm:inline text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
-                  {employeeId ? `(${employeeId})` : ''}
-                </span>
-              )}
-            </button>
-
-            {/* 3. Admin Option: VISIBLE to consultant, but clicks are BLOCKED if consultant */}
-            <button
-              onClick={handleAdminClick}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all relative ${
-                shakeButton === 'admin' ? 'animate-bounce' : ''
-              } ${
-                isAdminAuth && (activeView === 'admin' || currentRole === 'admin')
-                  ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-semibold'
-                  : isPureConsultant
-                  ? 'text-rose-600/80 dark:text-rose-400/80 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-not-allowed border border-dashed border-rose-300 dark:border-rose-800'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-              title={
-                isPureConsultant
-                  ? '🚫 Access Blocked: Consultants cannot access Admin portal'
-                  : isAdminAuth
-                  ? 'Admin Portal Active'
-                  : 'Admin Portal (Login Required)'
-              }
-            >
-              {isPureConsultant ? (
-                // BLOCK SYMBOL for consultant
-                <Ban className="w-3.5 h-3.5 text-rose-500" />
-              ) : (
+            {/* Admin: only shown for admin auth */}
+            {isAdminAuth && (
+              <button
+                onClick={handleAdminClick}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all relative ${
+                  shakeButton === 'admin' ? 'animate-bounce' : ''
+                } ${
+                  isAdminAuth && (activeView === 'admin' || currentRole === 'admin')
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Admin Portal Active"
+              >
                 <Shield className="w-3.5 h-3.5 text-pink-500" />
-              )}
-              <span className="hidden sm:inline">Admin</span>
-
-              {/* Show block badge when in pure consultant mode */}
-              {isPureConsultant && (
-                <span className="hidden sm:inline text-[9px] font-bold px-1 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300">
-                  BLOCKED
-                </span>
-              )}
-            </button>
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            )}
 
           </div>
 
-          {/* Dark / Light Mode Toggle */}
-          <button
-            id="header-theme-toggle"
-            onClick={onToggleDarkMode}
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200/80 dark:border-slate-700 cursor-pointer"
-            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            aria-label="Toggle theme"
-          >
-            {isDarkMode ? (
-              <Sun className="w-4 h-4 text-amber-400 hover:rotate-45 transition-transform" />
-            ) : (
-              <Moon className="w-4 h-4 text-slate-600 hover:-rotate-12 transition-transform" />
-            )}
-          </button>
+          {/* Settings Icon + Dropdown (top-right) */}
+          <div className="relative" ref={settingsRef}>
+            <button
+              id="header-settings-btn"
+              onClick={() => setShowSettings(prev => !prev)}
+              className={`p-2 rounded-xl transition-colors border cursor-pointer ${
+                showSettings
+                  ? 'bg-pink-50 dark:bg-pink-950/40 border-pink-300 dark:border-pink-700 text-pink-600 dark:text-pink-300'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-700'
+              }`}
+              title="Settings"
+              aria-label="Open settings"
+            >
+              <Settings className={`w-4 h-4 transition-transform duration-200 ${showSettings ? 'rotate-45' : ''}`} />
+            </button>
 
-          {/* Sign Out / Switch Portal Button */}
-          {isEmployeeAuth || isAdminAuth ? (
-            // For Employee or Admin: Prominent Sign Out Button
-            <button
-              onClick={onSignOut}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer"
-              title="Sign Out of verified session (Re-login will be required)"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Sign Out</span>
-            </button>
-          ) : (
-            // For Consultant: Return to Dashboard button to switch role
-            <button
-              onClick={onOpenDashboard}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
-              title="Return to Portal Selection Dashboard"
-            >
-              <LayoutDashboard className="w-3.5 h-3.5 text-pink-500" />
-              <span className="hidden md:inline">Portals</span>
-            </button>
-          )}
+            {showSettings && (
+              <div className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl z-50 overflow-hidden">
+
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+                    <Settings className="w-3.5 h-3.5 text-pink-500" />
+                    <span>Settings</span>
+                  </span>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="p-0.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Dark / Light Mode */}
+                <button
+                  onClick={() => { onToggleDarkMode(); }}
+                  className="w-full flex items-center justify-between px-4 py-3 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-slate-800 flex items-center justify-center border border-amber-100 dark:border-slate-700">
+                      {isDarkMode ? (
+                        <Sun className="w-3.5 h-3.5 text-amber-400" />
+                      ) : (
+                        <Moon className="w-3.5 h-3.5 text-slate-600" />
+                      )}
+                    </div>
+                    <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                    {isDarkMode ? 'On' : 'Off'}
+                  </span>
+                </button>
+
+                {!isAdminAuth && (
+                  <button
+                    onClick={() => { onViewChange('document'); setShowSettings(false); }}
+                    className="w-full flex items-center space-x-3 px-4 py-3 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-t border-slate-100 dark:border-slate-800"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center border border-blue-100 dark:border-blue-900">
+                      <Eye className="w-3.5 h-3.5 text-blue-500" />
+                    </div>
+                    <span>Policy Viewer</span>
+                  </button>
+                )}
+
+                {/* Share */}
+                <div className="border-t border-slate-100 dark:border-slate-800">
+                  <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Share &amp; Export</div>
+
+                  <button
+                    onClick={() => {
+                      window.open('https://wa.me/?text=' + encodeURIComponent('Check out Insighte Policy Assistant!'), '_blank');
+                      setShowSettings(false);
+                    }}
+                    className="w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center border border-emerald-100 dark:border-emerald-900">
+                      <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
+                    <span>Share via WhatsApp</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      window.location.href = 'mailto:?subject=Insighte%20Policy%20Bot&body=Check%20out%20the%20Insighte%20Policy%20Assistant!';
+                      setShowSettings(false);
+                    }}
+                    className="w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/30 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/40 flex items-center justify-center border border-purple-100 dark:border-purple-900">
+                      <Mail className="w-3.5 h-3.5 text-purple-600" />
+                    </div>
+                    <span>Share via Email</span>
+                  </button>
+                </div>
+
+                {/* Sign Out */}
+                {(isEmployeeAuth || isAdminAuth) && (
+                  <button
+                    onClick={() => { onSignOut(); setShowSettings(false); }}
+                    className="w-full flex items-center space-x-3 px-4 py-3 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors border-t border-slate-100 dark:border-slate-800"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/40 flex items-center justify-center border border-rose-100 dark:border-rose-900">
+                      <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                    </div>
+                    <span>Sign Out</span>
+                  </button>
+                )}
+
+                {/* Return to Dashboard (for consultant) */}
+                {isPureConsultant && (
+                  <button
+                    onClick={() => { onOpenDashboard(); setShowSettings(false); }}
+                    className="w-full flex items-center space-x-3 px-4 py-3 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-t border-slate-100 dark:border-slate-800"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700">
+                      <LayoutDashboard className="w-3.5 h-3.5 text-pink-500" />
+                    </div>
+                    <span>Switch Portal</span>
+                  </button>
+                )}
+
+              </div>
+            )}
+          </div>
 
         </div>
 
