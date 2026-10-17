@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { 
   Shield, 
   BookOpen, 
@@ -62,6 +62,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [chatFeedback, setChatFeedback] = useState<ChatFeedback[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
+  const hasLoadedFeedback = useRef(false);
 
   // Selected category in active tab
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
@@ -117,7 +118,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'feedback') {
+    if (!hasLoadedFeedback.current || activeTab === 'feedback') {
+      hasLoadedFeedback.current = true;
       void loadChatFeedback();
     }
   }, [activeTab, loadChatFeedback]);

@@ -14,12 +14,6 @@ import {
   LayoutDashboard,
   AlertTriangle,
   Settings,
-  Share2,
-  Mail,
-  FileSpreadsheet,
-  Printer,
-  Copy,
-  Check,
   ChevronDown,
   X
 } from 'lucide-react';
@@ -393,37 +387,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Policy Viewer</span>
                   </button>
                 )}
-
-                {/* Share */}
-                <div className="border-t border-slate-100 dark:border-slate-800">
-                  <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Share &amp; Export</div>
-
-                  <button
-                    onClick={() => {
-                      window.open('https://wa.me/?text=' + encodeURIComponent('Check out Insighte Policy Assistant!'), '_blank');
-                      setShowSettings(false);
-                    }}
-                    className="w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center border border-emerald-100 dark:border-emerald-900">
-                      <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-                    </div>
-                    <span>Share via WhatsApp</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      window.location.href = 'mailto:?subject=Insighte%20Policy%20Bot&body=Check%20out%20the%20Insighte%20Policy%20Assistant!';
-                      setShowSettings(false);
-                    }}
-                    className="w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/30 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/40 flex items-center justify-center border border-purple-100 dark:border-purple-900">
-                      <Mail className="w-3.5 h-3.5 text-purple-600" />
-                    </div>
-                    <span>Share via Email</span>
-                  </button>
-                </div>
 
                 {/* Sign Out */}
                 {(isEmployeeAuth || isAdminAuth) && (
