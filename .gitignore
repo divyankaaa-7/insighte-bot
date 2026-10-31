@@ -7,3 +7,8 @@ coverage/
 .env*
 !.env.example
 data/feedback.json
+
+data/policies.json
+data/uploads_tmp/
+data/policies.json
+data/uploads_tmp/

@@ -22,10 +22,12 @@ import {
   LogOut,
   Undo2,
   MessageSquareText,
-  RefreshCw
+  RefreshCw,
+  Upload
 } from 'lucide-react';
 import { LogoConfig, PolicyCategory, PolicyRole } from '../../types';
 import { INITIAL_CONSULTANT_POLICIES, INITIAL_EMPLOYEE_POLICIES } from '../../data/defaultPolicies';
+import { PolicyUploader } from './PolicyUploader';
 
 interface ChatFeedback {
   id: string;
@@ -56,7 +58,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onClose,
   initialSelectedCategory
 }) => {
-  const [activeTab, setActiveTab] = useState<'consultant' | 'employee' | 'branding' | 'backup' | 'feedback'>(
+  const [activeTab, setActiveTab] = useState<'consultant' | 'employee' | 'branding' | 'backup' | 'feedback' | 'upload'>(
     initialSelectedCategory ? initialSelectedCategory.policyType : 'consultant'
   );
   const [chatFeedback, setChatFeedback] = useState<ChatFeedback[]>([]);
@@ -445,6 +447,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <MessageSquareText className="w-4 h-4" />
           <span>Chat Feedback ({chatFeedback.length})</span>
+        </button>
+
+        <button
+          id="admin-upload-tab-btn"
+          onClick={() => setActiveTab('upload')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+            activeTab === 'upload'
+              ? 'bg-pink-600 text-white shadow-md shadow-pink-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Upload className="w-4 h-4" />
+          <span>Upload Policy Document</span>
         </button>
       </div>
 
@@ -1125,6 +1140,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'upload' && (
+        <PolicyUploader
+          existingPolicies={policies}
+          onUpdatePolicies={onUpdatePolicies}
+        />
       )}
 
       {/* Add Category Modal */}

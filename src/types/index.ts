@@ -50,6 +50,20 @@ export interface LogoConfig {
   subText: string;
 }
 
+// Draft category produced by AI analysis — awaits admin approval before being merged into live policies
+export interface DraftPolicyCategory {
+  id: string;
+  title: string;
+  policyType: PolicyRole;
+  pageNumber: number;
+  summary: string;
+  content: string;
+  keywords: string[];
+  approved: boolean;
+  edited: boolean;
+  confidence?: number; // 0-1, optional AI-provided confidence
+}
+
 export interface SearchMatch {
   categoryId: string;
   title: string;
