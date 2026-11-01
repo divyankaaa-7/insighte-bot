@@ -55,19 +55,10 @@ export function shareToWhatsApp(messages: ChatMessage[]) {
 }
 
 export function shareViaEmail(messages: ChatMessage[], role: PolicyRole | 'admin') {
-  openEmailDraft(
-    `Insighte Policy Inquiry Record - ${role.toUpperCase()}`,
-    generateShareText(messages)
-  );
-}
-
-export function openEmailDraft(subject: string, body: string) {
-  const composeUrl = new URL('https://mail.google.com/mail/');
-  composeUrl.searchParams.set('view', 'cm');
-  composeUrl.searchParams.set('fs', '1');
-  composeUrl.searchParams.set('su', subject);
-  composeUrl.searchParams.set('body', body);
-  window.open(composeUrl.toString(), '_blank', 'noopener,noreferrer');
+  const subject = encodeURIComponent(`Insighte Policy Inquiry Record - ${role.toUpperCase()}`);
+  const body = encodeURIComponent(generateShareText(messages));
+  const mailtoUrl = `mailto:?subject=${subject}&body=${body}`;
+  window.location.href = mailtoUrl;
 }
 
 export async function copyTranscript(messages: ChatMessage[]): Promise<boolean> {
